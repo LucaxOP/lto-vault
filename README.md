@@ -31,6 +31,7 @@ Ao abrir uma fita, o aplicativo apresenta todas as utilizações encontradas, da
 - Navegação por data
 - Biblioteca animada com o último estado de cada fita
 - Histórico completo por fita
+- Histórico geral em sequência, com busca e filtros
 - Mapeamento configurável da aba e das colunas da planilha
 - Preservação da formatação existente ao salvar
 - Sobrescrita somente das células de fita e status da linha escolhida
@@ -70,7 +71,7 @@ python .\examples\create_sample_workbook.py
 Requisitos: Windows 10/11, Python 3.11 ou mais recente e Microsoft Edge WebView2 Runtime.
 
 ```powershell
-git clone https://github.com/SEU-USUARIO/lto-vault.git
+git clone https://github.com/LucaxOP/lto-vault.git
 cd lto-vault
 powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
