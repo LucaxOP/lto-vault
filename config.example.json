@@ -1,0 +1,6 @@
+{
+  "sheet_name": "Daily",
+  "tape_column": "A",
+  "date_column": "B",
+  "status_column": "E"
+}
