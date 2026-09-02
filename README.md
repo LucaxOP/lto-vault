@@ -1,5 +1,7 @@
 # LTO Vault
 
+<p align="center"><img src="assets/lto-vault.png" width="180" alt="Ícone do LTO Vault"></p>
+
 > Aplicação desktop para registrar, consultar e auditar backups em fitas LTO usando uma planilha Excel como fonte de dados.
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)

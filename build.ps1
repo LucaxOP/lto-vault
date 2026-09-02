@@ -10,6 +10,7 @@ if (-not (Test-Path $python)) {
 & $python -m pip install -r (Join-Path $root "requirements.txt") pyinstaller
 & $python -m PyInstaller --noconfirm --clean --onefile --windowed `
     --name "LTO Vault" `
+    --icon (Join-Path $root "assets\lto-vault.ico") `
     --add-data "$(Join-Path $root 'src\index.html');." `
     --collect-all webview `
     --hidden-import clr `
