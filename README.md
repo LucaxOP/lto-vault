@@ -159,6 +159,8 @@ O painel resume utilizações, sucessos, lotações e falhas antes de listar cad
 
 A visão consolidada permite pesquisar por fita ou status e filtrar os resultados.
 
+Quando a data selecionada ainda não existe, o aplicativo adiciona uma nova linha ao final da planilha, copia a formatação da linha anterior e preenche data, fita e status automaticamente.
+
 ## Formato esperado da planilha
 
 O mapeamento padrão usa uma aba chamada `Daily`:

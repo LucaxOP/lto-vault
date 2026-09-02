@@ -211,6 +211,19 @@ class Api:
                 target._style = copy(candidate._style)
                 return
 
+    def _append_date_row(self, sheet, target_date: date, date_column: int) -> int:
+        row = sheet.max_row + 1
+        template_row = row - 1
+        if template_row >= 2:
+            for column in range(1, sheet.max_column + 1):
+                source = sheet.cell(template_row, column)
+                destination = sheet.cell(row, column)
+                if source.has_style:
+                    destination._style = copy(source._style)
+            sheet.row_dimensions[row].height = sheet.row_dimensions[template_row].height
+        sheet.cell(row, date_column).value = target_date
+        return row
+
     def save(self, selected_date: str, tape: str, status: str):
         if not self.path:
             return {"ok": False, "message": "Nenhuma planilha selecionada."}
@@ -225,9 +238,10 @@ class Api:
             workbook = load_workbook(self.path, read_only=False, data_only=False, keep_vba=self.path.suffix.lower() == ".xlsm", keep_links=True)
             sheet = workbook[sheet_name]
             matches = [row for row in range(2, sheet.max_row + 1) if normalized_date(sheet.cell(row, date_column).value, workbook.epoch) == target_date]
-            if len(matches) != 1:
-                raise RuntimeError("A data selecionada não possui exatamente um registro na planilha.")
-            row = matches[0]
+            if len(matches) > 1:
+                raise RuntimeError("A data selecionada aparece mais de uma vez na planilha.")
+            created = not matches
+            row = matches[0] if matches else self._append_date_row(sheet, target_date, date_column)
             sheet.cell(row, tape_column).value = int(tape) if tape.isdigit() else tape
             self._copy_tape_style(sheet, row, tape_column)
             sheet.cell(row, status_column).value = status
@@ -244,7 +258,8 @@ class Api:
                 shutil.copyfile(temp_path, self.path)
                 temp_path.unlink(missing_ok=True)
             temp_path = None
-            return {"ok": True, "message": "Registro salvo com sucesso."}
+            message = "Novo dia criado e registro salvo com sucesso." if created else "Registro salvo com sucesso."
+            return {"ok": True, "message": message}
         except Exception as error:
             return {"ok": False, "message": str(error)}
         finally:
