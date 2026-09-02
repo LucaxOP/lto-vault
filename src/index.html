@@ -1319,6 +1319,12 @@
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return d.toISOString().slice(0, 10);
       }
+      function isoYesterday() {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 10);
+      }
       function formatDate(v) {
         if (!v) return "Nenhum backup registrado";
         const [y, m, d] = v.split("-");
@@ -1471,7 +1477,7 @@
       window.addEventListener("pywebviewready", () => {
         $("date").value = new URLSearchParams(location.search).has("demo")
           ? "2026-08-24"
-          : isoToday();
+          : isoYesterday();
         loadData();
       });
 
