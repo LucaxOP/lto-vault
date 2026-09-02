@@ -9,6 +9,7 @@ if (-not (Test-Path $python)) {
 & $python -m pip install --upgrade pip
 & $python -m pip install -r (Join-Path $root "requirements.txt") pyinstaller
 & $python -m PyInstaller --noconfirm --clean --onefile --windowed `
+    --optimize 2 `
     --name "LTO Vault" `
     --icon (Join-Path $root "assets\lto-vault.ico") `
     --add-data "$(Join-Path $root 'src\index.html');." `

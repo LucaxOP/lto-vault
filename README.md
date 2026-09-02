@@ -68,6 +68,7 @@ A aplicação reúne quatro fluxos principais:
 - Atualização do registro diário em poucos cliques.
 - Escolha livre e cadastro de fitas.
 - Navegação por data.
+- Leitura em cache para trocar datas e telas sem reabrir a planilha.
 - Biblioteca visual com o último estado de cada mídia.
 - Histórico completo por fita.
 - Histórico geral com busca e filtros.

@@ -19,7 +19,7 @@ from openpyxl.utils.cell import column_index_from_string
 from openpyxl.utils.datetime import from_excel
 
 APP_NAME = "LTO Vault"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 DEFAULT_SETTINGS = {"sheet_name": "Daily", "tape_column": "A", "date_column": "B", "status_column": "E"}
 
 
@@ -84,7 +84,14 @@ class Api:
         self.path: Path | None = None
         self.custom_tapes: set[str] = set()
         self.settings = dict(DEFAULT_SETTINGS)
+        self._cache_key = None
+        self._cache_index = None
         self._read_config()
+
+    def _invalidate_cache(self) -> None:
+        """Descarta o índice quando a origem dos dados muda."""
+        self._cache_key = None
+        self._cache_index = None
 
     def _read_config(self) -> None:
         try:
@@ -111,13 +118,14 @@ class Api:
             "status_column": str(settings.get("status_column", "")).strip().upper(),
         }
         if not all(cleaned.values()):
-            return {"ok": False, "message": "All mapping fields are required."}
+            return {"ok": False, "message": "Preencha todos os campos de mapeamento."}
         try:
             for key in ("tape_column", "date_column", "status_column"):
                 column_index_from_string(cleaned[key])
         except ValueError:
-            return {"ok": False, "message": "Columns must use Excel letters, such as A, B or E."}
+            return {"ok": False, "message": "Use letras de colunas do Excel, como A, B ou E."}
         self.settings = cleaned
+        self._invalidate_cache()
         self._write_config()
         return {"ok": True}
 
@@ -125,6 +133,7 @@ class Api:
         result = APP_WINDOW.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=("Planilhas Excel (*.xlsx;*.xlsm)",))
         if result:
             self.path = Path(result[0]).resolve()
+            self._invalidate_cache()
             self._write_config()
             return str(self.path)
         return None
@@ -147,61 +156,63 @@ class Api:
         if not value:
             return {"ok": False, "message": "Informe uma identificação válida."}
         self.custom_tapes.add(value)
+        self._invalidate_cache()
         self._write_config()
         return {"ok": True, "tape": value}
+
+    def _build_index(self):
+        """Lê a planilha uma vez e mantém um índice enquanto o arquivo não mudar."""
+        modified = self.path.stat().st_mtime_ns
+        cache_key = (str(self.path), modified, tuple(self.settings.values()), tuple(sorted(self.custom_tapes)))
+        if cache_key == self._cache_key and self._cache_index is not None:
+            return self._cache_index
+
+        sheet_name = self.settings["sheet_name"]
+        tape_column = column_index_from_string(self.settings["tape_column"])
+        date_column = column_index_from_string(self.settings["date_column"])
+        status_column = column_index_from_string(self.settings["status_column"])
+        max_column = max(tape_column, date_column, status_column)
+        workbook = load_workbook(self.path, read_only=True, data_only=False, keep_vba=self.path.suffix.lower() == ".xlsm", keep_links=True)
+        try:
+            if sheet_name not in workbook.sheetnames:
+                raise ValueError(f'A aba "{sheet_name}" não foi encontrada.')
+            sheet = workbook[sheet_name]
+            tapes, latest, histories, records, dates = set(self.custom_tapes), {}, {}, [], {}
+            for row, values in enumerate(sheet.iter_rows(min_row=2, min_col=1, max_col=max_column, values_only=True), start=2):
+                label = tape_label(values[tape_column - 1])
+                row_date = normalized_date(values[date_column - 1], workbook.epoch)
+                status = values[status_column - 1]
+                if label:
+                    tapes.add(label)
+                if not row_date:
+                    continue
+                item = {"date": row_date.isoformat(), "tape": label, "status": str(status or "Sem status"), "category": category(status), "row": row}
+                records.append(item)
+                dates.setdefault(row_date.isoformat(), []).append((row, label, str(status or "")))
+                if label:
+                    histories.setdefault(label, []).append({key: item[key] for key in ("date", "status", "category", "row")})
+                    if status not in (None, "") and (label not in latest or row_date >= latest[label][0]):
+                        latest[label] = (row_date, str(status))
+        finally:
+            workbook.close()
+
+        tape_items = []
+        order = lambda item: (0, -int(item)) if item.isdigit() else (1, item.casefold())
+        for label in sorted(tapes, key=order):
+            last_date, status = latest.get(label, (None, "Sem histórico"))
+            entries = sorted(histories.get(label, []), key=lambda item: item["date"], reverse=True)
+            tape_items.append({"id": label, "status": status, "category": category(status), "lastDate": last_date.isoformat() if last_date else None, "history": entries})
+
+        self._cache_key = cache_key
+        self._cache_index = {"dates": dates, "tapes": tape_items, "records": sorted(records, key=lambda item: (item["date"], item["row"]), reverse=True)}
+        return self._cache_index
 
     def load(self, selected_date: str):
         if not self.path or not self.path.is_file():
             return {"ok": False, "needsFile": True, "message": "Selecione a planilha de backup."}
         try:
-            target = datetime.strptime(selected_date, "%Y-%m-%d").date()
-            sheet_name = self.settings["sheet_name"]
-            tape_column = column_index_from_string(self.settings["tape_column"])
-            date_column = column_index_from_string(self.settings["date_column"])
-            status_column = column_index_from_string(self.settings["status_column"])
-            max_column = max(tape_column, date_column, status_column)
-            workbook = load_workbook(self.path, read_only=True, data_only=False, keep_vba=self.path.suffix.lower() == ".xlsm", keep_links=True)
-            try:
-                if sheet_name not in workbook.sheetnames:
-                    raise ValueError(f'Worksheet "{sheet_name}" was not found.')
-                sheet = workbook[sheet_name]
-                matches, tapes, history, usage_history, records = [], set(self.custom_tapes), {}, {}, []
-                for row, values in enumerate(sheet.iter_rows(min_row=2, min_col=1, max_col=max_column, values_only=True), start=2):
-                    tape, raw_date, status = values[tape_column - 1], values[date_column - 1], values[status_column - 1]
-                    label = tape_label(tape)
-                    row_date = normalized_date(raw_date, workbook.epoch)
-                    if row_date:
-                        records.append({
-                            "date": row_date.isoformat(),
-                            "tape": label,
-                            "status": str(status or "Sem status"),
-                            "category": category(status),
-                            "row": row,
-                        })
-                    if label:
-                        tapes.add(label)
-                    if label and row_date:
-                        usage_history.setdefault(label, []).append({
-                            "date": row_date.isoformat(),
-                            "status": str(status or "Sem status"),
-                            "category": category(status),
-                            "row": row,
-                        })
-                    if label and row_date and status not in (None, ""):
-                        previous = history.get(label)
-                        if previous is None or row_date >= previous[0]:
-                            history[label] = (row_date, str(status))
-                    if row_date == target:
-                        matches.append((row, label, str(status or "")))
-            finally:
-                workbook.close()
-
-            tape_items = []
-            for label in sorted(tapes, key=lambda item: (0, -int(item)) if item.isdigit() else (1, item.casefold()), reverse=False):
-                last_date, status = history.get(label, (None, "Sem histórico"))
-                entries = sorted(usage_history.get(label, []), key=lambda item: item["date"], reverse=True)
-                tape_items.append({"id": label, "status": status, "category": category(status), "lastDate": last_date.isoformat() if last_date else None, "history": entries})
-
+            index = self._build_index()
+            matches = index["dates"].get(selected_date, [])
             record = matches[0] if len(matches) == 1 else None
             return {
                 "ok": True,
@@ -212,8 +223,8 @@ class Api:
                 "row": record[0] if record else None,
                 "currentTape": record[1] if record else "",
                 "currentStatus": record[2] if record else "",
-                "tapes": tape_items,
-                "records": sorted(records, key=lambda item: (item["date"], item["row"]), reverse=True),
+                "tapes": index["tapes"],
+                "records": index["records"],
             }
         except Exception as error:
             log_error("load", error)
@@ -262,7 +273,8 @@ class Api:
             status_column = column_index_from_string(self.settings["status_column"])
             workbook = load_workbook(self.path, read_only=False, data_only=False, keep_vba=self.path.suffix.lower() == ".xlsm", keep_links=True)
             sheet = workbook[sheet_name]
-            matches = [row for row in range(2, sheet.max_row + 1) if normalized_date(sheet.cell(row, date_column).value, workbook.epoch) == target_date]
+            # O índice evita percorrer milhares de células novamente ao salvar.
+            matches = [item[0] for item in self._build_index()["dates"].get(selected_date, [])]
             if len(matches) > 1:
                 raise RuntimeError("A data selecionada aparece mais de uma vez na planilha.")
             created = not matches
@@ -284,6 +296,7 @@ class Api:
                 temp_path.unlink(missing_ok=True)
             temp_path = None
             message = "Novo dia criado e registro salvo com sucesso." if created else "Registro salvo com sucesso."
+            self._invalidate_cache()
             return {"ok": True, "message": message}
         except PermissionError as error:
             log_error("save_permission", error)
