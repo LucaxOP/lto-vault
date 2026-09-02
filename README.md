@@ -1,56 +1,167 @@
 # LTO Vault
 
-Uma interface desktop moderna para registrar e consultar backups em fitas LTO usando uma planilha Excel como base de dados.
-
-O LTO Vault foi pensado para equipes que já possuem uma planilha de controle e querem uma operação diária mais rápida, visual e segura — sem migrar os dados para a nuvem ou criar cópias automáticas do arquivo.
+> Aplicação desktop para registrar, consultar e auditar backups em fitas LTO usando uma planilha Excel como fonte de dados.
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)
-![Excel](https://img.shields.io/badge/Excel-.xlsx%20%7C%20.xlsm-217346?logo=microsoft-excel&logoColor=white)
-![Local](https://img.shields.io/badge/dados-100%25%20locais-2ce6a1)
+![Excel](https://img.shields.io/badge/Excel-.xlsx%20%7C%20.xlsm-217346?logo=microsoftexcel&logoColor=white)
+![pywebview](https://img.shields.io/badge/pywebview-Desktop-4C8BF5)
+![Local](https://img.shields.io/badge/dados-100%25%20locais-2CE6A1)
+
+O LTO Vault transforma uma planilha de controle em uma experiência operacional rápida, visual e segura, sem enviar dados à nuvem ou exigir a migração do processo existente.
+
+> A demonstração usa a interface real do projeto com uma planilha totalmente sintética. Identificadores, datas, caminhos e ocorrências foram criados exclusivamente para o portfólio.
+
+![Demonstração do registro, biblioteca e históricos](docs/images/demonstracao.gif)
+
+## Navegação
+
+- [Visão geral](#visão-geral)
+- [O desafio](#o-desafio)
+- [A solução](#a-solução)
+- [Arquitetura](#arquitetura)
+- [Decisões de engenharia](#decisões-de-engenharia)
+- [Interface](#interface)
+- [Executar o projeto](#executar-o-projeto)
+- [Privacidade e segurança](#privacidade-e-segurança)
+
+## Visão geral
+
+Equipes que administram backups em mídia física frequentemente dependem de planilhas extensas para identificar a fita utilizada, registrar o resultado diário e investigar ocorrências anteriores. O LTO Vault preserva esse arquivo como fonte oficial e adiciona uma camada desktop dedicada à rotina: registro diário, biblioteca visual, histórico individual e pesquisa global.
+
+### Minha atuação
+
+- Levantamento do fluxo operacional e das regras de negócio.
+- Desenvolvimento da aplicação desktop e da interface.
+- Integração de leitura e escrita com arquivos Excel.
+- Implementação das regras de normalização e categorização.
+- Preservação de macros, links e estilos existentes.
+- Empacotamento para Windows e documentação de uso.
+- Criação de ambiente e dados sintéticos para demonstração pública.
+
+## O desafio
+
+A solução precisava melhorar a experiência diária sem comprometer o arquivo já adotado pela operação:
+
+- manter os dados integralmente locais;
+- funcionar com planilhas `.xlsx` e `.xlsm`;
+- permitir o uso de qualquer fita disponível;
+- preservar formatação, macros e links existentes;
+- alterar apenas as células autorizadas;
+- destacar fitas lotadas e falhas;
+- oferecer rastreabilidade sem relatórios manuais;
+- ser distribuída para Windows sem exigir Python do usuário final.
+
+## A solução
+
+A aplicação reúne quatro fluxos principais:
+
+1. **Registro diário:** seleção de data, fita e resultado.
+2. **Biblioteca de fitas:** visão consolidada do último estado de cada mídia.
+3. **Histórico individual:** utilizações, sucessos, lotações e falhas.
+4. **Histórico geral:** sequência pesquisável e filtrável de todos os registros.
+
+### Principais recursos
+
+- Atualização do registro diário em poucos cliques.
+- Escolha livre e cadastro de fitas.
+- Navegação por data.
+- Biblioteca visual com o último estado de cada mídia.
+- Histórico completo por fita.
+- Histórico geral com busca e filtros.
+- Mapeamento configurável de aba e colunas.
+- Preservação da formatação existente.
+- Operação local, sem telemetria ou envio de dados.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    A[Planilha Excel] -->|Leitura local| B[Camada Python]
+    B --> C[Normalização de datas e status]
+    C --> D[API pywebview]
+    D --> E[Interface HTML e CSS]
+    E --> F[Registro diário]
+    E --> G[Biblioteca]
+    E --> H[Históricos]
+    F -->|Fita e status autorizados| I[Arquivo temporário]
+    I -->|Substituição atômica| A
+```
+
+| Camada | Responsabilidade |
+| --- | --- |
+| Excel | Fonte operacional e histórico persistente |
+| Python | Validação, leitura, escrita e regras de domínio |
+| pywebview | Ponte entre o backend local e a interface |
+| HTML/CSS/JavaScript | Experiência visual, navegação e feedback |
+| PyInstaller | Distribuição em executável para Windows |
+
+## Decisões de engenharia
+
+### Atualizar somente os campos autorizados
+
+A aplicação identifica exatamente a linha da data selecionada e modifica apenas a fita e o status. As demais células permanecem intocadas.
+
+```python
+sheet.cell(row, tape_column).value = tape
+sheet.cell(row, status_column).value = status
+```
+
+### Salvar de forma segura
+
+O workbook é gravado primeiro em um arquivo temporário no mesmo diretório. Somente após a gravação bem-sucedida ele substitui o arquivo original, reduzindo o risco de deixar uma planilha parcialmente escrita.
+
+```python
+workbook.save(temp_path)
+os.replace(temp_path, workbook_path)
+```
+
+### Preservar o documento existente
+
+Arquivos com macro são abertos com `keep_vba`, links são mantidos e o estilo visual das células é copiado de registros equivalentes.
+
+### Normalizar entradas heterogêneas
+
+Datas podem chegar como objetos do Excel, números seriais ou textos em formatos distintos. Status equivalentes são categorizados para que a interface apresente sucessos e alertas de maneira consistente.
+
+```python
+for pattern in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
+    parsed = datetime.strptime(value, pattern)
+```
+
+### Manter a operação offline
+
+Não existe backend remoto. Interface, regras e arquivos permanecem no computador do usuário; o caminho da última planilha é salvo apenas na área de dados local do aplicativo.
 
 ## Interface
 
+### Registro diário
+
+![Registro diário com planilha sintética](docs/images/registro-diario.png)
+
+A tela concentra data, planilha ativa, fita selecionada e resultado. A hierarquia visual reduz as decisões necessárias em uma tarefa recorrente.
+
 ### Biblioteca de fitas
 
-As fitas aparecem em ordem numérica decrescente, com o resultado mais recente, indicadores visuais e animações de interação.
+![Biblioteca visual de fitas LTO](docs/images/biblioteca-de-fitas.png)
 
-![Biblioteca de fitas do LTO Vault](docs/images/tape-library.png)
+Cada cartão apresenta o último resultado e a última utilização. Cores e ícones distinguem mídias disponíveis, lotadas ou com falhas.
 
 ### Histórico individual
 
-Ao abrir uma fita, o aplicativo apresenta todas as utilizações encontradas, datas, resultados e um resumo das ocorrências.
+![Histórico individual de uma fita fictícia](docs/images/historico-da-fita.png)
 
-![Histórico de uma fita no LTO Vault](docs/images/tape-history.png)
+O painel resume utilizações, sucessos, lotações e falhas antes de listar cada ocorrência.
 
-## Principais recursos
+### Histórico geral
 
-- Atualização do registro diário com poucos cliques
-- Escolha livre da fita, sem depender de ordem sequencial
-- Cadastro de novas fitas
-- Navegação por data
-- Biblioteca animada com o último estado de cada fita
-- Histórico completo por fita
-- Histórico geral em sequência, com busca e filtros
-- Mapeamento configurável da aba e das colunas da planilha
-- Preservação da formatação existente ao salvar
-- Sobrescrita somente das células de fita e status da linha escolhida
-- Funcionamento local, sem telemetria e sem envio de dados
+![Histórico geral com dados sintéticos](docs/images/historico-geral.png)
 
-## Como usar
-
-1. Abra o LTO Vault.
-2. Clique na engrenagem e configure o mapeamento da planilha.
-3. Clique em **Selecionar planilha** e escolha o arquivo `.xlsx` ou `.xlsm`.
-4. Selecione a data e a fita desejadas.
-5. Escolha **Tudo certo**, **Fita lotou** ou **Informar falha**.
-6. Confirme a alteração.
-
-O aplicativo salva diretamente no arquivo selecionado. Feche a planilha no Excel antes de alterar um registro, pois o Excel pode bloquear a gravação enquanto o arquivo estiver aberto.
+A visão consolidada permite pesquisar por fita ou status e filtrar os resultados.
 
 ## Formato esperado da planilha
 
-O mapeamento padrão usa uma aba chamada `Daily` e as seguintes colunas:
+O mapeamento padrão usa uma aba chamada `Daily`:
 
 | Coluna | Conteúdo |
 |:---:|---|
@@ -58,17 +169,15 @@ O mapeamento padrão usa uma aba chamada `Daily` e as seguintes colunas:
 | B | Data do backup |
 | E | Status ou observação |
 
-Você pode trocar o nome da aba e as letras das colunas pela engrenagem do aplicativo. As datas devem ser datas reais do Excel ou textos reconhecíveis, como `2026-08-24` e `24/08/2026`.
-
-Para gerar uma planilha fictícia de teste:
+O nome da aba e as letras das colunas podem ser alterados nas configurações. Para gerar uma planilha fictícia:
 
 ```powershell
 python .\examples\create_sample_workbook.py
 ```
 
-## Executar pelo código-fonte
+## Executar o projeto
 
-Requisitos: Windows 10/11, Python 3.11 ou mais recente e Microsoft Edge WebView2 Runtime.
+Requisitos: Windows 10/11, Python 3.11+ e Microsoft Edge WebView2 Runtime.
 
 ```powershell
 git clone https://github.com/LucaxOP/lto-vault.git
@@ -76,39 +185,55 @@ cd lto-vault
 powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
 
-Na primeira execução, o script cria o ambiente virtual e instala as dependências automaticamente.
-
-## Gerar um executável
+### Gerar o executável
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-O arquivo final será criado em `dist\LTO Vault.exe`. O usuário do executável não precisa instalar Python; o WebView2 normalmente já acompanha as versões atuais do Windows 10 e 11.
+O resultado será criado em `dist\LTO Vault.exe`. O usuário final não precisa instalar Python.
+
+## Tecnologias
+
+- Python 3.11+
+- pywebview
+- openpyxl
+- HTML, CSS e JavaScript
+- PyInstaller
+- Microsoft Edge WebView2
 
 ## Privacidade e segurança
 
 - A planilha nunca é enviada para serviços externos.
-- O caminho do último arquivo e as fitas cadastradas ficam no diretório de dados do usuário.
-- Planilhas, configurações locais, logs e artefatos de build são ignorados pelo Git.
-- O projeto não cria backups automáticos da planilha.
+- Não há telemetria ou backend remoto.
+- O aplicativo escreve somente nas colunas configuradas de fita e status.
+- Planilhas, configurações locais, logs e builds são ignorados pelo Git.
+- A demonstração pública usa apenas uma planilha sintética.
+- Nenhum caminho de rede, nome empresarial ou dado operacional real aparece nas mídias.
+- Recomenda-se testar inicialmente com uma cópia e manter o processo habitual de backup.
 
-Recomenda-se testar primeiro com uma cópia do arquivo e manter o backup corporativo habitual. Consulte também [SECURITY.md](SECURITY.md).
+Consulte também [SECURITY.md](SECURITY.md).
 
 ## Estrutura do projeto
 
 ```text
 lto-vault/
 ├── src/
-│   ├── app.py              # leitura, gravação e integração com o Excel
-│   └── index.html          # interface, estilos e animações
+│   ├── app.py
+│   └── index.html
 ├── examples/
 │   └── create_sample_workbook.py
-├── build.ps1               # gera o executável
-├── run.ps1                 # prepara e executa o ambiente
+├── docs/images/
+├── build.ps1
+├── run.ps1
 └── requirements.txt
 ```
 
 ## Licença
 
-Este repositório ainda não possui uma licença de código aberto. O código pode ser consultado publicamente, mas a reutilização, modificação e redistribuição não são concedidas até que uma licença seja adicionada.
+Este repositório ainda não possui licença de código aberto. O código pode ser consultado publicamente, mas reutilização, modificação e redistribuição não são concedidas até que uma licença seja adicionada.
+
+---
+
+Desenvolvido e documentado por **Lucas Paiva**.
+
