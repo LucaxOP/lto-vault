@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import traceback
 from copy import copy
 from datetime import date, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from openpyxl.utils.cell import column_index_from_string
 from openpyxl.utils.datetime import from_excel
 
 APP_NAME = "LTO Vault"
+APP_VERSION = "1.0.0"
 DEFAULT_SETTINGS = {"sheet_name": "Daily", "tape_column": "A", "date_column": "B", "status_column": "E"}
 
 
@@ -29,6 +31,15 @@ def data_dir() -> Path:
 
 CONFIG = data_dir() / "config.json"
 APP_WINDOW = None
+
+
+def log_error(context: str, error: Exception) -> None:
+    try:
+        with (data_dir() / "errors.log").open("a", encoding="utf-8") as stream:
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            stream.write(f"[{timestamp}] {context}: {type(error).__name__}: {error}\n{traceback.format_exc()}\n")
+    except OSError:
+        pass
 
 
 def normalized_date(value, epoch) -> date | None:
@@ -118,6 +129,19 @@ class Api:
             return str(self.path)
         return None
 
+    def get_app_info(self):
+        return {"version": APP_VERSION}
+
+    def open_workbook(self):
+        if not self.path or not self.path.is_file():
+            return {"ok": False, "message": "Selecione uma planilha primeiro."}
+        try:
+            os.startfile(self.path)
+            return {"ok": True}
+        except Exception as error:
+            log_error("open_workbook", error)
+            return {"ok": False, "message": f"Não foi possível abrir a planilha: {error}"}
+
     def add_tape(self, value: str):
         value = tape_label(value)
         if not value:
@@ -192,6 +216,7 @@ class Api:
                 "records": sorted(records, key=lambda item: (item["date"], item["row"]), reverse=True),
             }
         except Exception as error:
+            log_error("load", error)
             return {"ok": False, "message": str(error)}
 
     def _copy_status_style(self, sheet, row: int, status: str, status_column: int) -> None:
@@ -260,7 +285,11 @@ class Api:
             temp_path = None
             message = "Novo dia criado e registro salvo com sucesso." if created else "Registro salvo com sucesso."
             return {"ok": True, "message": message}
+        except PermissionError as error:
+            log_error("save_permission", error)
+            return {"ok": False, "message": "A planilha está aberta ou bloqueada. Feche o arquivo no Excel e tente novamente."}
         except Exception as error:
+            log_error("save", error)
             return {"ok": False, "message": str(error)}
         finally:
             if workbook:

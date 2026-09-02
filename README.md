@@ -73,6 +73,10 @@ A aplicação reúne quatro fluxos principais:
 - Histórico geral com busca e filtros.
 - Mapeamento configurável de aba e colunas.
 - Preservação da formatação existente.
+- Confirmação visual após cada gravação.
+- Abertura rápida da planilha pelo aplicativo.
+- Aviso específico quando o arquivo está bloqueado pelo Excel.
+- Log técnico local para diagnóstico.
 - Operação local, sem telemetria ou envio de dados.
 
 ## Arquitetura
@@ -197,6 +201,12 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 O resultado será criado em `dist\LTO Vault.exe`. O usuário final não precisa instalar Python.
 
+### Instalador simples
+
+Depois de gerar o executável, coloque `LTO Vault.exe` junto dos arquivos da pasta `installer` e execute `Instalar LTO Vault.cmd`. O instalador copia o programa para a área de aplicativos do usuário e cria atalhos na área de trabalho e no menu Iniciar, sem exigir privilégios de administrador.
+
+Se ocorrer um erro de leitura ou gravação, os detalhes técnicos ficam em `%LOCALAPPDATA%\TapeVault\errors.log`.
+
 ## Tecnologias
 
 - Python 3.11+
@@ -228,6 +238,9 @@ lto-vault/
 ├── examples/
 │   └── create_sample_workbook.py
 ├── docs/images/
+├── installer/
+│   ├── Instalar LTO Vault.cmd
+│   └── Instalar LTO Vault.ps1
 ├── build.ps1
 ├── run.ps1
 └── requirements.txt
